@@ -1,4 +1,5 @@
 #include <SoftwareSerial.h>
+#include <Wire.h>
 
 #define DEV_ENV true  // Wheather this is production or development environment. In production environment, nothing will be printed out to the console
 
@@ -38,17 +39,22 @@
 #define SENS_TRIGO_Z      PORTH |= _BV(PH4)
 #define SENS_HORRAIRE_Z   PORTH &= ~_BV(PH4)
 
+// Types of moves. Either NOT_MOVING, TRANSLATION or ROTATION
+#define NOT_MOVING   0
+#define TRANSLATION  1
+#define ROTATION     2
+
 
 //-------------------------------------------------------------------
 ///////////////////////////  Constantes  ////////////////////////////
 //-------------------------------------------------------------------
 
 // conversion pas par tour et par radians.
-#define pasParMetre    4244 * 1.03 //facteur experimental
-const float rRobot = 0.135; //0.1265 théoriquement
+#define pasParMetre    4244 * 1.03 * 1.05 * 0.5 //facteur experimental = 1.03 ; demi-pas alors que la valeur a été trouvée pour des quarts de pas
+const float rRobot = 0.119; //0.1265 théoriquement
 
 //Determinées
-const PROGMEM long dtMaxSpeed = 300; // Microsecondes entre 2 pas à la vitesse maximale
+const PROGMEM long dtMaxSpeed = 2000; // Microsecondes entre 2 pas à la vitesse maximale
 const PROGMEM long acc = 2.5 * pow(10, 8); // µs² / pas (inverse de l'acceleration)
 const PROGMEM long dec = 2.5 * pow(10, 8); // µs² / pas (inverse de la deceleration)
 //const PROGMEM long tempsAcc = 1.0 * pow(10, 6); // Temps d'accélération en µs
@@ -119,12 +125,16 @@ bool batterieCritique = false;
 const unsigned int delaiCheckBatterie = 5000; //milisecondes
 unsigned long prevCheckBatterie;
 int onSeBallade = 0;
+int moveType = NOT_MOVING;
 
 //-------------------------------------------------------------------
 ///////////////////////    Initialisation    ////////////////////////
 //-------------------------------------------------------------------
 
 void setup() {
+  pinMode(RXSWSerial, INPUT);
+  pinMode(TXSWSerial, OUTPUT);
+
   pinMode(xStepPin, OUTPUT);  // Pin pas moteur x en mode OUTPUT
   pinMode(yStepPin, OUTPUT);  // Pin pas moteur y en mode OUTPUT
   pinMode(zStepPin, OUTPUT);  // Pin pas moteur z en mode OUTPUT
@@ -142,28 +152,38 @@ void setup() {
   SWSerial.setTimeout(1);
   SWSerial.write("1");
   AlimMoteurs(true);         // On éteint les moteurs (par sécurité)
+
+  Wire.begin(8);
+  Wire.onReceive(onReceive);
+  Wire.onRequest(getRelativePositionFromStart);
+  #if DEV_ENV
+    Serial.println("Initialized !");
+  #endif
+
 }
 
 //-------------------------------------------------------------------
 ///////////////////////////     Loop      ///////////////////////////
 //-------------------------------------------------------------------
 
-long lastTime = 0;
-
-void loop() {         // boucle de déplacement
-  long tps = micros();
-  if (tps - lastTime < dtMaxSpeed) {
-    return;
-  }
-  lastTime = tps;
-  PasMoteurX();
-  PasMoteurY();
-  PasMoteurZ();
-  return;
+void loop() {
   if (enMvmt) {       // Si on est en mouvement
     Avancer();        // On passe à l'étape d'après (si le temps necessaire s'est écoulé)
-  } else {
-    CheckSWSerial();  // Reception de consignes de l'étage commande
+  }
+}
+
+void testEngines() {
+  Demarrer();
+  long lastTime = 0;
+  long t;
+  while (true) {
+    t = micros();
+    if (t - lastTime > dtMaxSpeed) {
+      lastTime = t;
+      PasMoteurX();
+      PasMoteurY();
+      PasMoteurZ();
+    }
   }
 }
 
@@ -171,73 +191,8 @@ void loop() {         // boucle de déplacement
 //////////////////////////   Fonctions    ///////////////////////////
 //-------------------------------------------------------------------
 
-void CheckSWSerial() {                           // Récupération des consignes via le port SWSerial (RX TX)
-  if (!SWSerial.available()) {                //pour recuperer des valeurs du moniteur
-    return;
-  }
-  #if DEV_ENV
-    Serial.print("Reception consigne : ");
-  #endif
-  int command = SWSerial.parseInt();
-  #if DEV_ENV
-    Serial.print(command);
-  #endif
-  switch (command) {
-    case 0 : // Arret d'urgence
-      Serial.println(" : Arret");
-      enMvmt = false;
-      AlimMoteurs(false);
-      break;
-    case 1 :  // Translation X,Y
-      xCentre = -SWSerial.parseFloat();
-      yCentre = -SWSerial.parseFloat();
-      int speedPercentage = SWSerial.parseInt();
-      dtSpeed = dtMaxSpeed * speedPercentage / 100.;
-      #if !DEV_ENV
-        Serial.print(" : Translation de coordonnées (");
-        Serial.print(xCentre);
-        Serial.print(", ");
-        Serial.print(yCentre);
-        Serial.print(") avec une vitesse de ");
-        Serial.print(speedRatio);
-        Serial.println("%");
-      #endif
-      if (dtSpeed < dtMaxSpeed)
-        dtSpeed = dtMaxSpeed;
-      CalculPasTranslation(-xCentre, -yCentre);
-      angleConsigne = 0;
-      Demarrer();
-      break;
-    case 2 :  // Rotation : Centre X,Y et angle
-      // Serial.println("Consigne de départ");
-      xCentre = SWSerial.parseFloat();
-      yCentre = SWSerial.parseFloat();
-      angleConsigne = SWSerial.parseFloat();
-      dtSpeed = dtMaxSpeed * 100. / SWSerial.parseInt();
-      if (dtSpeed < dtMaxSpeed)
-        dtSpeed = dtMaxSpeed;
-      // Serial.println((String) xCentre + " " + yCentre + " " + angleConsigne);
-      CalculPasRotation(xCentre, yCentre , angleConsigne);
-      Demarrer();
-      break;
-    case 3 : // Ancrage
-      // Serial.print("Consigne d'Ancrage : ");
-      command = SWSerial.parseInt();
-      // Serial.println((String) command);
-      if (command == 1)
-        AlimMoteurs(true);
-      else
-        AlimMoteurs(false);
-      break;
-  }
-  while (SWSerial.available() > 0)
-    SWSerial.parseFloat();
-  delay(10);
-}
-
 void Demarrer() { // Lancement du mouvement
   InitVariablesMvmt();
-  SWSerial.println("1");  // en mouvement
   AlimMoteurs(true);
 }
 
@@ -252,8 +207,6 @@ void InitVariablesMvmt() { // Initialisation des variables
   pasFaitsZ = 0;
   prevT = 0;
 }
-
-
 
 void CalculPasRotation(float xCentre, float yCentre, float angle) {
   if (sqrt(sq(xCentre) + sq(yCentre)) == rRobot) yCentre += 0.001;
@@ -278,8 +231,6 @@ void CalculPasRotation(float xCentre, float yCentre, float angle) {
 
 void CalculPasTranslation(float x, float y) { // Calcul des pas à faire sur chaque moteurs
   float angle = arctan(x, y);
-  //Serial.print("angle directionnel : ");
-  //Serial.println(angleRelatif * 180 / PI);
   float distanceTotalePas = sqrt(sq(x) + sq(y)) * pasParMetre;
   long pasMoteurX = (float) distanceTotalePas * cos(borner(angle + (2. / 3) * PI));     //
   long pasMoteurY = (float) distanceTotalePas * cos(borner(angle - (2. / 3) * PI ));    // Calcul des distances à parcourir
@@ -334,7 +285,6 @@ void Avancer() { // Passe à la prochaine étape du mouvement si l'intervalle de
       newDt = dtMaxDec / Sqrt(etapesRestantes);
       if (etapesRestantes <= 0) {
         enMvmt = false;
-        // SWSerial.println("0");
       }
     }
   } else {
@@ -406,6 +356,7 @@ uint16_t Sqrt(uint16_t input) {// Fonction de calcul de racine plus rapide trouv
   }
   return result;
 }
+
 //-------------------------------------------------------------------
 //////////////////  Fonctions Physiques Moteurs  ////////////////////
 //-------------------------------------------------------------------
@@ -413,23 +364,125 @@ uint16_t Sqrt(uint16_t input) {// Fonction de calcul de racine plus rapide trouv
 void AlimMoteurs(bool power) { // Alimentation ou coupure du courant des moteurs
   digitalWrite(enablePin, !power);
 }
+
 void SensMoteurs(bool X, bool Y, bool Z) {
   X ? SENS_TRIGO_X : SENS_HORRAIRE_X; //choix du sens
   Y ? SENS_TRIGO_Y : SENS_HORRAIRE_Y; //choix du sens
   Z ? SENS_TRIGO_Z : SENS_HORRAIRE_Z; //choix du sens
 }
+
 void PasMoteurX() {
   STEP_HIGH_X;                 //set la pin sur HIGH
-  //delayMicroseconds(5);
   STEP_LOW_X;                  //set la pin sur LOW
 }
+
 void PasMoteurY() {
   STEP_HIGH_Y;                 //set la pin sur HIGH
-  //delayMicroseconds(5);
   STEP_LOW_Y;                  //set la pin sur LOW
 }
+
 void PasMoteurZ() {
   STEP_HIGH_Z;                 //set la pin sur HIGH
-  //delayMicroseconds(5);
   STEP_LOW_Z;                  //set la pin sur LOW
+}
+
+/** CALLBACKS FROM WIRE **/
+
+/*
+This function is called automatically when we receive something from the master throught the Wire.
+*/
+void onReceive() {
+  #if DEV_ENV
+    Serial.print("Reception consigne : ");
+  #endif
+  char command = Wire.read();
+  #if DEV_ENV
+    Serial.print(command, DEC);
+  #endif
+  int speedPercentage;
+  switch (command) {
+    case 0 : // Arret d'urgence
+      #if DEV_ENV
+        Serial.println(" : Arret");
+      #endif
+      enMvmt = false;
+      moveType = NOT_MOVING;
+      AlimMoteurs(false);
+      break;
+    case 1 :  // Translation X,Y
+      xCentre = readFloatFromWire();
+      yCentre = readFloatFromWire();
+      speedPercentage = Wire.read();
+      dtSpeed = dtMaxSpeed * speedPercentage / 100.;
+      #if DEV_ENV
+        Serial.print(" : Translation de coordonnees (");
+        Serial.print(xCentre);
+        Serial.print(", ");
+        Serial.print(yCentre);
+        Serial.print(") avec une vitesse de ");
+        Serial.print(speedPercentage);
+        Serial.println("%");
+      #endif
+      dtSpeed = min(dtSpeed, dtMaxSpeed);
+      moveType = TRANSLATION;
+      CalculPasTranslation(-xCentre, -yCentre);
+      angleConsigne = 0;
+      Demarrer();
+      break;
+    case 2 :  // Rotation : Centre X,Y et angle
+      xCentre = readFloatFromWire();
+      yCentre = readFloatFromWire();
+      angleConsigne = readFloatFromWire();
+      speedPercentage = Wire.read();
+      dtSpeed = dtMaxSpeed * speedPercentage / 100.;
+      dtSpeed = min(dtSpeed, dtMaxSpeed);
+      #if DEV
+        Serial.print("Consigne de départ : ");
+        Serial.print(xCentre);
+        Serial.print(" ");
+        Serial.print(yCentre);
+        Serial.print(" ");
+        Serial.println(angleConsigne);
+      #endif
+      moveType = ROTATION;
+      CalculPasRotation(xCentre, yCentre, angleConsigne);
+      Demarrer();
+      break;
+  }
+}
+
+/*
+This function is called automatically when we receive something from the master throught the Wire.
+*/
+void getRelativePositionFromStart() {
+  float ratioStepsDone = 1 - (float) etapesRestantes / nbTotalEtapes;
+  if (moveType == TRANSLATION) {
+    writeFloatToWire(xCentre / ratioStepsDone);
+    writeFloatToWire(yCentre / ratioStepsDone);
+  } else if (moveType == ROTATION) {
+    float angle = ratioStepsDone * 2 * pi;
+    writeFloatToWire(cos(ratioStepsDone * 2 * pi) + xCentre);
+    writeFloatToWire(sin(ratioStepsDone * 2 * pi) + yCentre);
+  } else {
+    writeFloatToWire(0);
+    writeFloatToWire(0);
+  }
+}
+
+/** UTILITY FUNCTIONS TO READ/WRITE FROM/TO THE Wire **/
+
+float readFloatFromWire() {
+  uint32_t bits = ((uint32_t) Wire.read() << 24) |
+                  ((uint32_t) Wire.read() << 16) |
+                  ((uint32_t) Wire.read() << 8) |
+                  (uint32_t) Wire.read();
+  return *((float*) &bits);
+}
+
+void writeFloatToWire(float value) {
+  uint32_t bits = *((uint32_t*) &value);
+  Wire.write((bits >> 24) & 0xff);
+  Wire.write((bits >> 16) & 0xff);
+  Wire.write((bits >> 8) & 0xff);
+  Wire.write(bits & 0xff);
 }

@@ -1,3 +1,5 @@
+#include <Wire.h>
+
 #define DEV_ENV true
 
 #define TRIGGER A0
@@ -14,6 +16,9 @@ void setup() {
   for (int i = 2; i <= 13; i++) {
     pinMode(i, INPUT);
   }
+
+  Wire.begin(2);
+  Wire.onRequest(sendData);
 }
 
 void loop() {
@@ -25,5 +30,18 @@ void loop() {
     delayMicroseconds(10);
     digitalWrite(TRIGGER, LOW);
     distances[i-2] = pulseIn(i, HIGH, 5000UL);
+  }
+  Serial.println(distances[0]);
+  /*for (int i = 0; i < 12; i++) {
+    Serial.print(distances[i]);
+    Serial.print(" ");
+  }
+  Serial.println();*/
+}
+
+void sendData() {
+  for (int i = 0; i < 12; i++) {
+    Wire.write(distances[i] >> 8);
+    Wire.write(distances[i] & 0xff);
   }
 }

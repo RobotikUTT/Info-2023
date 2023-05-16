@@ -50,11 +50,11 @@
 //-------------------------------------------------------------------
 
 // conversion pas par tour et par radians.
-#define pasParMetre    4244 * 1.03 * 1.05 * 0.5 //facteur experimental = 1.03 ; demi-pas alors que la valeur a été trouvée pour des quarts de pas
+#define pasParMetre    4244 * 1.03 * 1.05 * 0.5 * 1.06 //facteur experimental = 1.03 ; demi-pas alors que la valeur a été trouvée pour des quarts de pas
 const float rRobot = 0.119; //0.1265 théoriquement
 
 //Determinées
-const PROGMEM long dtMaxSpeed = 2000; // Microsecondes entre 2 pas à la vitesse maximale
+const PROGMEM long dtMaxSpeed = 1200;//1200; // Microsecondes entre 2 pas à la vitesse maximale
 const PROGMEM long acc = 2.5 * pow(10, 8); // µs² / pas (inverse de l'acceleration)
 const PROGMEM long dec = 2.5 * pow(10, 8); // µs² / pas (inverse de la deceleration)
 //const PROGMEM long tempsAcc = 1.0 * pow(10, 6); // Temps d'accélération en µs
@@ -143,23 +143,94 @@ void setup() {
   pinMode(zDirPin, OUTPUT);   // Pin dir moteur z en mode OUTPUT
   pinMode(enablePin, OUTPUT); // Pin alimentation moteurs en mode OUTPUT
   
-  #if DEV_ENV
+  //#if DEV_ENV
     Serial.begin(9600);   // Démarrage port série
     Serial.setTimeout(1);   // Délai d'attente port série 1ms
-  #endif
+  //#endif
 
-  SWSerial.begin(57600);
-  SWSerial.setTimeout(1);
-  SWSerial.write("1");
   AlimMoteurs(true);         // On éteint les moteurs (par sécurité)
 
-  Wire.begin(8);
+  Wire.begin(1);
   Wire.onReceive(onReceive);
   Wire.onRequest(getRelativePositionFromStart);
   #if DEV_ENV
     Serial.println("Initialized !");
   #endif
 
+  /*xCentre = -0;
+  yCentre = -1;
+  int speedPercentage = 100;
+  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
+  #if DEV_ENV
+    Serial.print(" : Translation de coordonnees (");
+    Serial.print(xCentre);
+    Serial.print(", ");
+    Serial.print(yCentre);
+    Serial.print(") avec une vitesse de ");
+    Serial.print(speedPercentage);
+    Serial.println("%");
+  #endif
+  dtSpeed = min(dtSpeed, dtMaxSpeed);
+  moveType = TRANSLATION;
+  CalculPasTranslation(-xCentre, -yCentre);
+  angleConsigne = 0;
+  Demarrer();*/
+
+  /*xCentre = 1;
+  yCentre = 0;
+  angleConsigne = 2*PI*1.1;
+  int speedPercentage = 100;
+  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
+  dtSpeed = min(dtSpeed, dtMaxSpeed);
+  #if DEV
+    Serial.print("Consigne de départ : ");
+    Serial.print(xCentre);
+    Serial.print(" ");
+    Serial.print(yCentre);
+    Serial.print(" ");
+    Serial.println(angleConsigne);
+  #endif
+  moveType = ROTATION;
+  CalculPasRotation(xCentre, yCentre, angleConsigne);
+  Demarrer();*/
+
+  /*xCentre = 0.5;
+  yCentre = 0;
+  angleConsigne = PI*1.1;
+  int speedPercentage = 100;
+  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
+  dtSpeed = min(dtSpeed, dtMaxSpeed);
+  #if DEV
+    Serial.print("Consigne de départ : ");
+    Serial.print(xCentre);
+    Serial.print(" ");
+    Serial.print(yCentre);
+    Serial.print(" ");
+    Serial.println(angleConsigne);
+  #endif
+  moveType = ROTATION;
+  CalculPasRotation(xCentre, yCentre, angleConsigne);
+  Demarrer();
+  while (enMvmt) {
+    Avancer();
+  }
+  xCentre = 0.5;
+  yCentre = 0;
+  angleConsigne = PI*1.1;
+  int speedPercentage = 100;
+  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
+  dtSpeed = min(dtSpeed, dtMaxSpeed);
+  #if DEV
+    Serial.print("Consigne de départ : ");
+    Serial.print(xCentre);
+    Serial.print(" ");
+    Serial.print(yCentre);
+    Serial.print(" ");
+    Serial.println(angleConsigne);
+  #endif
+  moveType = ROTATION;
+  CalculPasRotation(xCentre, yCentre, angleConsigne);
+  Demarrer();*/
 }
 
 //-------------------------------------------------------------------
@@ -453,17 +524,21 @@ void onReceive() {
 
 /*
 This function is called automatically when we receive something from the master throught the Wire.
+It sends 3 floats : the x, y, and 
 */
 void getRelativePositionFromStart() {
   float ratioStepsDone = 1 - (float) etapesRestantes / nbTotalEtapes;
   if (moveType == TRANSLATION) {
-    writeFloatToWire(xCentre / ratioStepsDone);
-    writeFloatToWire(yCentre / ratioStepsDone);
+    writeFloatToWire(xCentre * ratioStepsDone);
+    writeFloatToWire(yCentre * ratioStepsDone);
+    writeFloatToWire(0);
   } else if (moveType == ROTATION) {
-    float angle = ratioStepsDone * 2 * pi;
-    writeFloatToWire(cos(ratioStepsDone * 2 * pi) + xCentre);
-    writeFloatToWire(sin(ratioStepsDone * 2 * pi) + yCentre);
+    float angle = ratioStepsDone * angleConsigne;
+    writeFloatToWire(cos(angle) + xCentre);
+    writeFloatToWire(sin(angle) + yCentre);
+    writeFloatToWire(angle);
   } else {
+    writeFloatToWire(0);
     writeFloatToWire(0);
     writeFloatToWire(0);
   }

@@ -26,13 +26,19 @@
 #define SENS_TRIGO_Z      PORTH |= _BV(PH4)
 #define SENS_HORRAIRE_Z   PORTH &= ~_BV(PH4)
 
-#define STEPS_TO_GO_UP 1000
+#define STEPS_TO_GO_UP 4000
 #define STEPS_TO_OPEN 220
 
-const PROGMEM long dtMaxSpeed = 2000;
+#define GO_UP_ACTION   0
+#define GO_DOWN_ACTION 1
+#define OPEN_ACTION    2
+#define CLOSE_ACTION   3
+#define STOP_ACTION    4
 
-int verticalPos = 0;
-int horizontalPos = 0;
+const PROGMEM long dtMaxSpeed = 1000;
+
+int verticalPos = STEPS_TO_GO_UP;
+int horizontalPos = STEPS_TO_OPEN;
 
 bool opening = false;
 bool closing = false;
@@ -41,6 +47,8 @@ bool goingUp = false;
 
 void setup() {
   Wire.begin(3);
+  Wire.onReceive(DoAction);
+  Wire.onRequest(IsBusy);
 
   pinMode(HORIZONTAL_STEP_PIN, OUTPUT);  // Pin pas moteur x en mode OUTPUT
   pinMode(VERTICAL_STEP_PIN, OUTPUT);  // Pin pas moteur y en mode OUTPUT
@@ -52,20 +60,20 @@ void setup() {
 
   Serial.begin(9600);
 
-  AlimMoteurs(false); // For the security
   AlimMoteurs(true);
+  Serial.println("Initialized");
 }
 
 void loop() {
-  if (horizontalPos == STEPS_TO_OPEN && verticalPos == STEPS_TO_GO_UP) {
-    Serial.println("Closing and going down");
-    Close();
+  /*if (verticalPos == STEPS_TO_GO_UP && horizontalPos == STEPS_TO_OPEN) {
     GoDown();
-  } else if (horizontalPos == 0 && verticalPos == 0) {
-    Serial.println("Opening and going up");
-    Open();
-    GoUp();
   }
+  if (horizontalPos == STEPS_TO_OPEN && verticalPos == 0) {
+    Close();
+  }
+  if (horizontalPos == 0 && verticalPos == 0) {
+    GoUp();
+  }*/
   MoveMotors();
   delayMicroseconds(dtMaxSpeed);
 }
@@ -73,22 +81,32 @@ void loop() {
 void MoveMotors() {
   // Horizontal motors
   if (opening && horizontalPos < STEPS_TO_OPEN) {
-    Serial.println("open");
-    //OPEN_DIRECTION;
     HorizontalStep();
     horizontalPos++;
+    if (horizontalPos == STEPS_TO_OPEN) {
+      opening = false;
+    }
   } else if (closing && horizontalPos > 0) {
-    //Serial.println("close");
     HorizontalStep();
     horizontalPos--;
+    Serial.println(horizontalPos);
+    if (horizontalPos == 0) {
+      closing = false;
+    }
   }
   // Vertical motors
   if (goingUp && verticalPos < STEPS_TO_GO_UP) {
     VerticalStep();
     verticalPos++;
+    if (verticalPos == STEPS_TO_GO_UP) {
+      goingUp = true;
+    }
   } else if (goingDown && verticalPos > 0) {
     VerticalStep();
     verticalPos--;
+    if (verticalPos == 0) {
+      goingDown = false;
+    }
   }
 }
 
@@ -126,9 +144,12 @@ void Open() {
 
 void Close() {
   CLOSE_DIRECTION;
+  Serial.println("closinnnng !!!");
   closing = true;
   opening = false;
 }
+
+/** Code for controlling direcly motors **/
 
 void AlimMoteurs(bool power) { // Alimentation ou coupure du courant des moteurs
   digitalWrite(ENABLE_PIN, !power);
@@ -147,4 +168,38 @@ void VerticalStep() {
 void PasMoteurZ() {
   STEP_HIGH_Z;                 //set la pin sur HIGH
   STEP_LOW_Z;                  //set la pin sur LOW
+}
+
+/** Callback from the Wire **/
+
+void DoAction() {
+  char action = Wire.read();
+  switch (action) {
+    case GO_UP_ACTION:
+      GoUp();
+    case GO_DOWN_ACTION:
+      GoDown();
+    case OPEN_ACTION:
+      Open();
+    case CLOSE_ACTION:
+      Close();
+    case STOP_ACTION:
+      opening = false;
+      closing = false;
+      goingUp = false;
+      goingDown = false;
+  }
+}
+
+void IsBusy() {
+  // Serial.print(closing);
+  // Serial.print(" ");
+  // Serial.print(horizontalPos);
+  // Serial.print(" ");
+  // Serial.print(opening);
+  // Serial.print(" ");
+  // Serial.print(goingUp);
+  // Serial.print(" ");
+  // Serial.println(goingDown);
+  Wire.write(closing || opening || goingUp || goingDown);
 }

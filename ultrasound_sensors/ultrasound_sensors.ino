@@ -31,12 +31,12 @@ void loop() {
     digitalWrite(TRIGGER, LOW);
     distances[i-2] = pulseIn(i, HIGH, 5000UL);
   }
-  Serial.println(distances[0]);
-  /*for (int i = 0; i < 12; i++) {
-    Serial.print(distances[i]);
-    Serial.print(" ");
+  for (int i = 0; i < 12; i++) {
+    if (distances[i] && distances[i] < 1000) {
+      Serial.println(i);
+      return;
+    }
   }
-  Serial.println();*/
 }
 
 void sendData() {

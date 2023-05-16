@@ -1,68 +1,295 @@
 #include <Wire.h>
-#include <SoftwareSerial.h>
 
 #define DEV_ENV true
+#if DEV_ENV
+  #define PRINT(x) Serial.print(x)
+  #define PRINTLN(x) Serial.println(x)
+#else
+  #define PRINT(x)
+  #define PRINTLN(x)
+#endif
+
+#define FLUSH for (int i = 0; i < 7; i++) { Serial.println("du texte"); }
 
 #define SDA_MPU6050_Serial A4
 #define SCL_MPU6050_Serial A5
 
-#define I2C_MOVING_ID 8
+#define I2C_MOVING_ID 1
 #define I2C_ULTRASOUND_SENSOR_ID 2
+#define I2C_CLAWS_ID 3
 
-unsigned long prevT = 0;
-int dt = 10;
-float xCentre = 0;
-float yCentre = 0;
-float phiReel = 0;
-bool enMvmt = false;
-bool attente = false;
-bool balladeFinie = false;
-int onSeBallade = 0;
+#define CHANGE_STRATEGY_PIN 0
+#define STRATEGY_ID_BIT_1_PIN 0
+#define STRATEGY_ID_BIT_2_PIN 0
+#define STRATEGY_ID_BIT_4_PIN 0
+#define NUMBER_OF_STRATEGIES 0
+
+#define START_PIN 0
+#define EMERGENCY_BUTTON_PIN 0
+
+#define STRATEGY_CLAWS_DO_NOTHING       0
+#define STRATEGY_CLAWS_GO_DOWN          1
+#define STRATEGY_CLAWS_GO_UP            2
+#define STRATEGY_CLAWS_OPEN             3
+#define STRATEGY_CLAWS_CLOSE            4
+#define STRATEGY_CLAWS_GO_DOWN_AND_OPEN 5
 
 int distances[12];
 
 String inputString = "";
 
+
+const float strategy0[] = {
+  // Values at the beginning (x, y, orientation)
+  0, 0, 0,
+  // Number of targets
+  4,
+  1, 1, STRATEGY_CLAWS_CLOSE,
+  1, 1, STRATEGY_CLAWS_OPEN,
+  1, 1, STRATEGY_CLAWS_CLOSE,
+  0, 0, STRATEGY_CLAWS_DO_NOTHING,
+};
+const float strategy1[] = {
+
+};
+
+int strategyId = 0;
+// A pointer to the array (aka an array)
+float* strategy = 0;
+int strategyStep = -1;
+
+bool gameStarted = false;
+float strategyFinished = false;
+
+// Angle that stores the direction we are moving to
+float currentMovingDirection = 0;
+
+float xRequest, yRequest, angleRequest;
+
+float position[2];
+float angle;
+
 void setup() {
   Serial.begin(9600);  // Démarrage port série
   Serial.setTimeout(1);  // Délai d'attente port série 1ms
-  
+  while (!Serial);
+
   Wire.begin();
 
-  Serial.println(F("Initialisé"));
+  /*while (true) {
+    Serial.println("coucou");
+  }*/
+
+  // pinMode(CHANGE_STRATEGY_PIN, INPUT_PULLUP);
+  // pinMode(STRATEGY_ID_BIT_1_PIN, OUTPUT);
+  // pinMode(STRATEGY_ID_BIT_2_PIN, OUTPUT);
+  // pinMode(STRATEGY_ID_BIT_4_PIN, OUTPUT);
+
+  // pinMode(START_PIN, INPUT_PULLUP);
+  // pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
+  //Serial.println((unsigned long)(~0), HEX);
+  StopMoving();
+  Serial.println("Initialised");
 }
 
 void loop() {
+  //Serial.println("in the loop");
+  if (!gameStarted) {
+    CheckStrategyButton();
+    CheckStartGameButton();
+  } else if (!strategyFinished) {
+    RunStrategy();
+  }
+}
+
+void CheckStrategyButton() {
+  if (digitalRead(CHANGE_STRATEGY_PIN) && false) {
+    strategyId = (strategyId + 1) % NUMBER_OF_STRATEGIES;
+    digitalWrite(STRATEGY_ID_BIT_1_PIN, strategyId & 1);
+    digitalWrite(STRATEGY_ID_BIT_2_PIN, strategyId & 2);
+    digitalWrite(STRATEGY_ID_BIT_4_PIN, strategyId & 4);
+    // Wait until the button is released
+    while (digitalRead(CHANGE_STRATEGY_PIN));
+  }
+}
+
+void CheckStartGameButton() {
+  if (digitalRead(START_PIN) || true) {
+    gameStarted = true;
+    // strategyId = digitalRead(STRATEGY_ID_BIT_1_PIN) |
+    //              digitalRead(STRATEGY_ID_BIT_2_PIN) << 1 |
+    //              digitalRead(STRATEGY_ID_BIT_4_PIN) << 2;
+    strategyId = 0;
+    switch(strategyId) {
+      case 0:
+        strategy = strategy0;
+        break;
+      default:
+        // The strategy does not exist ! To avoid any strange thing with memory, it is better to just do nothing. And hope this case never happens >.<
+        strategyFinished = true;
+        return;
+    }
+    position[0] = strategy[0];
+    position[1] = strategy[1];
+    angle = strategy[2];
+  }
+}
+
+void CheckRobotsAround() {
   FetchDistances();
-  Deplacement(1/2, -sqrt(3)/2);
-  //Rotation(0, 0, 2 * PI);
-  //delay(4000);
-  //Rotation(0, 0, -2 * PI);
-  delay(100000);
+  float* relativeTargetPosition = GetTarget();
+  // If we are rotating, there should not be any problem with collisions
+  if (relativeTargetPosition[1] < 0) {
+    return;
+  }
+  relativeTargetPosition[0] -= position[0];
+  relativeTargetPosition[1] -= position[1];
+  for (int i = 0; i < 12; i++) {
+    if (distances[i] < 1500) {
+      // float array of length 2
+      
+      float movingAngle;
+      if (relativeTargetPosition[0] == 0) {
+        // y should never equal 0 at the same time as x. If it does, well, it should not (and it should not break things either anyway)
+        movingAngle = PI / 2;
+      } else {
+        movingAngle = atan(relativeTargetPosition[1] / relativeTargetPosition[0]);
+      }
+      float obstacleAngle = fmod(i * PI/6 - movingAngle, 2*PI); // Angle relative to the angle of the movement
+      // The obstacle is at the back
+      if (obstacleAngle > PI/2 && obstacleAngle < 3*PI/2) {
+        continue;
+      }
+      float distanceInMeters = 344 * (distances[i]/1000000.0) / 2;
+      float relativeObstacleX = cos(movingAngle) * distanceInMeters;
+      float relativeObstacleY = sin(movingAngle) * distanceInMeters;
+      // Changing base to the absolute one
+      float absoluteObstacleX = cos(angle) * relativeObstacleX + sin(angle) * relativeObstacleY;
+      float absoluteObstacleY = -sin(angle) * relativeObstacleX + cos(angle) * relativeObstacleY;
+      float turnAngle = PI - 2 * obstacleAngle;
+      Rotation(absoluteObstacleX, absoluteObstacleY, turnAngle);
+    }
+  }
+}
+
+
+void RunStrategy() {
+  // float array of length 2
+  float* target = GetTarget();
+  float xMoved, yMoved, angleMoved;
+  FetchDistanceMoved(xMoved, yMoved, angleMoved);
+  if (strategyStep == -1 || (abs(position[0] + xMoved - target[0]) < 0.05 && abs(position[1] + yMoved - target[1]) < 0.05)) {
+    // If claws haven't finished yet, we let them finish their job
+    if (AreClawsBusy()) {
+      return;
+    }
+    strategyStep++;
+    //StopMoving();
+    // If we reached the end of the strategy, we leave
+    if (strategyStep >= strategy[3]) {
+      strategyFinished = true;
+      Serial.println("STRATEGY finished !!");
+      return;
+    }
+    target = GetTarget();
+    // If this is a rotation
+    if (target[1] < 0) {
+      Rotation(0, 0, target[0]);
+    } else if (target[0] != position[0] || target[1] != position[1]) {
+      Serial.println("on envoie !");
+      Move(target[0], target[1]);
+    }
+    switch ((int) target[2]) {
+      case STRATEGY_CLAWS_DO_NOTHING:
+        break;
+      case STRATEGY_CLAWS_GO_DOWN:
+        GoDownClaws();
+        break;
+      case STRATEGY_CLAWS_GO_UP:
+        GoUpClaws();
+        break;
+      case STRATEGY_CLAWS_OPEN:
+        OpenClaws();
+        break;
+      case STRATEGY_CLAWS_CLOSE:
+        CloseClaws();
+        break;
+      case STRATEGY_CLAWS_GO_DOWN_AND_OPEN:
+        GoDownClaws();
+        OpenClaws();
+        break;
+    }
+  } else if (abs(xMoved - xRequest) < 0.001 && abs(yMoved - yRequest) < 0.001 && abs(angleMoved - angleRequest) < 0.001) {
+    // If we enter in this condition, movement should always be a straight path, and never a rotation
+    //Serial.println(xRequest);
+    Move(target[0], target[1]);
+  }
+}
+
+// Returns the position of the current target in the strategy
+float* GetTarget() {
+  // We return a pointer to the right value of the array
+  return strategy + 4 + strategyStep * 3;
+}
+
+void TestEachDirection() {
+  float angle = 0;
+  float x, y;
+  float xMoved = 9999, yMoved = 9999;
+  while (angle < 2 * PI) {
+    Serial.print("Testing angle ");
+    Serial.print(angle * 180 / PI);
+    Serial.println("°");
+    x = cos(angle) * 0.5;
+    y = sin(angle) * 0.5;
+    Move(x, y);
+    while (xMoved != x || yMoved != y) {
+      FetchDistanceMoved(xMoved, yMoved);
+    }
+    Move(-x, -y);
+    while (xMoved != -x || yMoved != -y) {
+      FetchDistanceMoved(xMoved, yMoved);
+    }
+    angle += 0.5;
+  }
 }
 
 /** WHEELS COMMUNICATION **/
 
-void Deplacement(float x, float y) {
+void Move(float x, float y) {
+  float xMoved, yMoved, angleMoved;
+  FetchDistanceMoved(xMoved, yMoved, angleMoved);
+  position[0] += xMoved;
+  position[1] += yMoved;
+  angle += angleMoved;
   Wire.beginTransmission(I2C_MOVING_ID);
   Wire.write(1);
-  writeFloatToWire(x);
-  writeFloatToWire(y);
+  writeFloatToWire(x - position[0]);
+  writeFloatToWire(y - position[1]);
   Wire.write(100);
   Wire.endTransmission();
-  #if DEV_ENV
-    Serial.println((String) "Consigne 1 envoyée : Deplacement " + x + " " + y);
-  #endif
+  xRequest = x - position[0];
+  yRequest = y - position[1];
+  angleRequest = 0;
+  PRINTLN((String) "Consigne 1 envoyée : Move " + (x-position[0]) + " " + (y-position[1]));
 }
 
 void Rotation(float xCentre, float yCentre, float angle) {
+  float xMoved, yMoved, angleMoved;
+  FetchDistanceMoved(xMoved, yMoved, angleMoved);
+  position[0] += xMoved;
+  position[1] += yMoved;
+  angle += angleMoved;
   Wire.beginTransmission(I2C_MOVING_ID);
   Wire.write(2);
-  writeFloatToWire(xCentre);
-  writeFloatToWire(yCentre);
+  writeFloatToWire(xCentre - position[0]);
+  writeFloatToWire(yCentre - position[1]);
   writeFloatToWire(angle);
   Wire.write(100);
   Wire.endTransmission();
+  xRequest = xCentre - position[0];
+  yRequest = yCentre - position[1];
+  angleRequest = angle;
   #if DEV_ENV
     Serial.println("Consigne 2 envoyée : Rotation");
   #endif
@@ -77,10 +304,19 @@ void StopMoving() {
   #endif
 }
 
-void FetchDistanceMoved(int &x, int &y) {
-  Wire.request(I2C_MOVING_ID, 8);
+void FetchDistanceMoved(float &x, float &y) {
+  Wire.requestFrom(I2C_MOVING_ID, 12);
   x = readFloatFromWire();
   y = readFloatFromWire();
+  // we don't care about the angle in this implementation
+  readFloatFromWire();
+}
+
+void FetchDistanceMoved(float &x, float &y, float &angle) {
+  Wire.requestFrom(I2C_MOVING_ID, 12);
+  x = readFloatFromWire();
+  y = readFloatFromWire();
+  angle = readFloatFromWire();
 }
 
 /** ULTRASOUND SENSORS COMMUNICATION **/
@@ -90,6 +326,44 @@ void FetchDistances() {
   for (int i = 0; i < 12; i++) {
     distances[i] = (Wire.read() << 8) | Wire.read();
   }
+}
+
+/** CLAWS COMMUNICATION **/
+
+void GoUpClaws() {
+  _SendActionToClaws(0);
+  PRINTLN("Asking claws to go up");
+}
+
+void GoDownClaws() {
+  _SendActionToClaws(1);
+  PRINTLN("Asking claws to go down");
+}
+
+void OpenClaws() {
+  _SendActionToClaws(2);
+  PRINTLN("Asking claws to open");
+}
+
+void CloseClaws() {
+  _SendActionToClaws(3);
+  PRINTLN("Asking claws to close");
+}
+
+void StopClaws() {
+  _SendActionToClaws(4);
+  PRINTLN("Asking claws to stop");
+}
+
+void _SendActionToClaws(int action) {
+  Wire.beginTransmission(I2C_CLAWS_ID);
+  Wire.write(action);
+  Wire.endTransmission();
+}
+
+bool AreClawsBusy() {
+  Wire.requestFrom(I2C_CLAWS_ID, 1);
+  return Wire.read();
 }
 
 /** UTILITY FUNCTION TO READ/WRITE FROM/TO Wire **/
@@ -109,3 +383,4 @@ float readFloatFromWire() {
                   (uint32_t) Wire.read();
   return *((float*) &bits);
 }
+

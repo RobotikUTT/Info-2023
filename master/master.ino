@@ -9,23 +9,18 @@
   #define PRINTLN(x)
 #endif
 
-#define FLUSH for (int i = 0; i < 7; i++) { Serial.println("du texte"); }
-
-#define SDA_MPU6050_Serial A4
-#define SCL_MPU6050_Serial A5
-
 #define I2C_MOVING_ID 1
 #define I2C_ULTRASOUND_SENSOR_ID 2
 #define I2C_CLAWS_ID 3
 
-#define CHANGE_STRATEGY_PIN 0
+#define START_PIN             0
+
+#define CHANGE_STRATEGY_PIN   0
 #define STRATEGY_ID_BIT_1_PIN 0
 #define STRATEGY_ID_BIT_2_PIN 0
 #define STRATEGY_ID_BIT_4_PIN 0
-#define NUMBER_OF_STRATEGIES 0
 
-#define START_PIN 0
-#define EMERGENCY_BUTTON_PIN 0
+#define NUMBER_OF_STRATEGIES 0
 
 #define STRATEGY_CLAWS_DO_NOTHING       0
 #define STRATEGY_CLAWS_GO_DOWN          1
@@ -44,9 +39,9 @@ const float strategy0[] = {
   0, 0, 0,
   // Number of targets
   4,
-  1, 1, STRATEGY_CLAWS_CLOSE,
-  1, 1, STRATEGY_CLAWS_OPEN,
-  1, 1, STRATEGY_CLAWS_CLOSE,
+  0.1, 0.1, STRATEGY_CLAWS_CLOSE,
+  0.1, 0.1, STRATEGY_CLAWS_OPEN,
+  0.1, 0.1, STRATEGY_CLAWS_CLOSE,
   0, 0, STRATEGY_CLAWS_DO_NOTHING,
 };
 const float strategy1[] = {
@@ -70,15 +65,13 @@ float position[2];
 float angle;
 
 void setup() {
-  Serial.begin(9600);  // Démarrage port série
-  Serial.setTimeout(1);  // Délai d'attente port série 1ms
-  while (!Serial);
+  #if DEV_ENV
+    Serial.begin(9600);  // Démarrage port série
+    Serial.setTimeout(1);  // Délai d'attente port série 1ms
+    while (!Serial);
+  #endif
 
   Wire.begin();
-
-  /*while (true) {
-    Serial.println("coucou");
-  }*/
 
   // pinMode(CHANGE_STRATEGY_PIN, INPUT_PULLUP);
   // pinMode(STRATEGY_ID_BIT_1_PIN, OUTPUT);
@@ -86,14 +79,14 @@ void setup() {
   // pinMode(STRATEGY_ID_BIT_4_PIN, OUTPUT);
 
   // pinMode(START_PIN, INPUT_PULLUP);
-  // pinMode(EMERGENCY_BUTTON_PIN, INPUT_PULLUP);
-  //Serial.println((unsigned long)(~0), HEX);
+
   StopMoving();
-  Serial.println("Initialised");
+  StopClaws();
+  
+  PRINTLN("Initialised");
 }
 
 void loop() {
-  //Serial.println("in the loop");
   if (!gameStarted) {
     CheckStrategyButton();
     CheckStartGameButton();
@@ -178,17 +171,16 @@ void RunStrategy() {
   float* target = GetTarget();
   float xMoved, yMoved, angleMoved;
   FetchDistanceMoved(xMoved, yMoved, angleMoved);
-  if (strategyStep == -1 || (abs(position[0] + xMoved - target[0]) < 0.05 && abs(position[1] + yMoved - target[1]) < 0.05)) {
+  if (strategyStep == -1 || (abs(position[0] + xMoved - target[0]) < 0.005 && abs(position[1] + yMoved - target[1]) < 0.005)) {
     // If claws haven't finished yet, we let them finish their job
     if (AreClawsBusy()) {
       return;
     }
     strategyStep++;
-    //StopMoving();
     // If we reached the end of the strategy, we leave
     if (strategyStep >= strategy[3]) {
       strategyFinished = true;
-      Serial.println("STRATEGY finished !!");
+      PRINTLN("STRATEGY finished !!");
       return;
     }
     target = GetTarget();
@@ -196,7 +188,6 @@ void RunStrategy() {
     if (target[1] < 0) {
       Rotation(0, 0, target[0]);
     } else if (target[0] != position[0] || target[1] != position[1]) {
-      Serial.println("on envoie !");
       Move(target[0], target[1]);
     }
     switch ((int) target[2]) {
@@ -221,7 +212,6 @@ void RunStrategy() {
     }
   } else if (abs(xMoved - xRequest) < 0.001 && abs(yMoved - yRequest) < 0.001 && abs(angleMoved - angleRequest) < 0.001) {
     // If we enter in this condition, movement should always be a straight path, and never a rotation
-    //Serial.println(xRequest);
     Move(target[0], target[1]);
   }
 }
@@ -237,9 +227,9 @@ void TestEachDirection() {
   float x, y;
   float xMoved = 9999, yMoved = 9999;
   while (angle < 2 * PI) {
-    Serial.print("Testing angle ");
-    Serial.print(angle * 180 / PI);
-    Serial.println("°");
+    PRINT("Testing angle ");
+    PRINT(angle * 180 / PI);
+    PRINTLN("°");
     x = cos(angle) * 0.5;
     y = sin(angle) * 0.5;
     Move(x, y);
@@ -259,13 +249,21 @@ void TestEachDirection() {
 void Move(float x, float y) {
   float xMoved, yMoved, angleMoved;
   FetchDistanceMoved(xMoved, yMoved, angleMoved);
+  // PRINT("distance Moved x : ");
+  // PRINTLN(xMoved);
   position[0] += xMoved;
   position[1] += yMoved;
   angle += angleMoved;
+  float relativeXToMove = x - position[0];
+  float relativeYToMove = y - position[1];
+  // PRINT("Relative position of target : ");
+  // PRINT(relativeXToMove);
+  // PRINT(", ");
+  // PRINTLN(relativeYToMove);
   Wire.beginTransmission(I2C_MOVING_ID);
   Wire.write(1);
-  writeFloatToWire(x - position[0]);
-  writeFloatToWire(y - position[1]);
+  writeFloatToWire(relativeXToMove);
+  writeFloatToWire(relativeYToMove);
   Wire.write(100);
   Wire.endTransmission();
   xRequest = x - position[0];
@@ -290,18 +288,14 @@ void Rotation(float xCentre, float yCentre, float angle) {
   xRequest = xCentre - position[0];
   yRequest = yCentre - position[1];
   angleRequest = angle;
-  #if DEV_ENV
-    Serial.println("Consigne 2 envoyée : Rotation");
-  #endif
+  PRINTLN("Consigne 2 envoyée : Rotation");
 }
 
 void StopMoving() {
   Wire.beginTransmission(I2C_MOVING_ID);
   Wire.write(0);
   Wire.endTransmission();
-  #if DEV_ENV
-    Serial.println("Consigne 3 envoyée : Arret");
-  #endif
+  PRINTLN("Consigne 3 envoyée : Arret");
 }
 
 void FetchDistanceMoved(float &x, float &y) {

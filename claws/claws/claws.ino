@@ -1,33 +1,40 @@
 #include <Wire.h>
 
 #define DEV_ENV true
+#if DEV_ENV
+  #define PRINT(x) Serial.print(x)
+  #define PRINTLN(x) Serial.println(x)
+#else
+  #define PRINT(x)
+  #define PRINTLN(x)
+#endif
 
 // Horizontal motor is X
 // Vetcical motor is Y
 
 #define HORIZONTAL_DIR_PIN           2  //PD2 -> set PORTD |= 0b00000100 ou 0x04   eteindre PORTE &= 0b11111011 ou 0xFB
-#define VERTICAL_DIR_PIN           3  //PD3 -> set PORTD |= 0b00001000 ou 0x08   eteindre PORTE &= 0b11110111 ou 0xF7
-#define zDirPin           4  //PD4 -> set PORTD |= 0b00010000 ou 0x10   eteindre PORTG &= 0b11101111 ou 0xEF
+#define VERTICAL_DIR_PIN             3  //PD3 -> set PORTD |= 0b00001000 ou 0x08   eteindre PORTE &= 0b11110111 ou 0xF7
+#define zDirPin                      4  //PD4 -> set PORTD |= 0b00010000 ou 0x10   eteindre PORTG &= 0b11101111 ou 0xEF
 #define HORIZONTAL_STEP_PIN          5  //PD5 -> set PORTD |= 0b00100000 ou 0x20   eteindre PORTE &= 0b11011111 ou 0xDF
-#define VERTICAL_STEP_PIN          6  //PD6 -> set PORTD |= 0b01000000 ou 0x40   eteindre PORTH &= 0b10111111 ou 0xBF
-#define zStepPin          7  //PD7 -> set PORTD |= 0b10000000 ou 0x80   eteindre PORTH &= 0b01111111 ou 0x7F
-#define ENABLE_PIN         8
+#define VERTICAL_STEP_PIN            6  //PD6 -> set PORTD |= 0b01000000 ou 0x40   eteindre PORTH &= 0b10111111 ou 0xBF
+#define zStepPin                     7  //PD7 -> set PORTD |= 0b10000000 ou 0x80   eteindre PORTH &= 0b01111111 ou 0x7F
+#define ENABLE_PIN                   8
 
 #define STEP_HIGH_HORIZONTAL       PORTE |= _BV(PE4)   // Activation Pin Pas X
 #define STEP_LOW_HORIZONTAL        PORTE &= ~_BV(PE4)  // Désactivation Pin Pas X
-#define STEP_HIGH_VERTICAL       PORTE |= _BV(PE5)   // Activation Pin Pas Z
-#define STEP_LOW_VERTICAL        PORTE &= ~_BV(PE5)  // Désactivation Pin Pas Y
-#define STEP_HIGH_Z       PORTG |= _BV(PG5)   // Activation Pin Pas Z
-#define STEP_LOW_Z        PORTG &= ~_BV(PG5)  // Désactivation Pin Pas Z
-#define CLOSE_DIRECTION      PORTE |= _BV(PE3)
-#define OPEN_DIRECTION   PORTE &= ~_BV(PE3)
-#define DOWN_DIRECTION      PORTH |= _BV(PH3)
-#define UP_DIRECTION   PORTH &= ~_BV(PH3)
-#define SENS_TRIGO_Z      PORTH |= _BV(PH4)
-#define SENS_HORRAIRE_Z   PORTH &= ~_BV(PH4)
+#define STEP_HIGH_VERTICAL         PORTE |= _BV(PE5)   // Activation Pin Pas Z
+#define STEP_LOW_VERTICAL          PORTE &= ~_BV(PE5)  // Désactivation Pin Pas Y
+#define STEP_HIGH_Z                PORTG |= _BV(PG5)   // Activation Pin Pas Z
+#define STEP_LOW_Z                 PORTG &= ~_BV(PG5)  // Désactivation Pin Pas Z
+#define CLOSE_DIRECTION            PORTE |= _BV(PE3)
+#define OPEN_DIRECTION             PORTE &= ~_BV(PE3)
+#define DOWN_DIRECTION             PORTH |= _BV(PH3)
+#define UP_DIRECTION               PORTH &= ~_BV(PH3)
+#define SENS_TRIGO_Z               PORTH |= _BV(PH4)
+#define SENS_HORRAIRE_Z            PORTH &= ~_BV(PH4)
 
 #define STEPS_TO_GO_UP 4000
-#define STEPS_TO_OPEN 220
+#define STEPS_TO_OPEN  220
 
 #define GO_UP_ACTION   0
 #define GO_DOWN_ACTION 1
@@ -35,17 +42,23 @@
 #define CLOSE_ACTION   3
 #define STOP_ACTION    4
 
-const PROGMEM long dtMaxSpeed = 1000;
+#define DELAY_BETWEEN_STEPS 1000
 
-int verticalPos = STEPS_TO_GO_UP;
-int horizontalPos = STEPS_TO_OPEN;
+int verticalPos   = 0;
+int horizontalPos = 0;
 
-bool opening = false;
-bool closing = false;
+bool opening   = false;
+bool closing   = false;
 bool goingDown = false;
-bool goingUp = false;
+bool goingUp   = false;
 
 void setup() {
+  #if DEV_ENV
+    Serial.begin(9600);
+    Serial.setTimeout(1);
+    while (!Serial);
+  #endif
+
   Wire.begin(3);
   Wire.onReceive(DoAction);
   Wire.onRequest(IsBusy);
@@ -58,24 +71,13 @@ void setup() {
   //pinMode(zDirPin, OUTPUT);   // Pin dir moteur z en mode OUTPUT
   pinMode(ENABLE_PIN, OUTPUT); // Pin alimentation moteurs en mode OUTPUT
 
-  Serial.begin(9600);
-
   AlimMoteurs(true);
-  Serial.println("Initialized");
+  PRINTLN("Initialized");
 }
 
 void loop() {
-  /*if (verticalPos == STEPS_TO_GO_UP && horizontalPos == STEPS_TO_OPEN) {
-    GoDown();
-  }
-  if (horizontalPos == STEPS_TO_OPEN && verticalPos == 0) {
-    Close();
-  }
-  if (horizontalPos == 0 && verticalPos == 0) {
-    GoUp();
-  }*/
   MoveMotors();
-  delayMicroseconds(dtMaxSpeed);
+  delayMicroseconds(DELAY_BETWEEN_STEPS);
 }
 
 void MoveMotors() {
@@ -89,7 +91,6 @@ void MoveMotors() {
   } else if (closing && horizontalPos > 0) {
     HorizontalStep();
     horizontalPos--;
-    Serial.println(horizontalPos);
     if (horizontalPos == 0) {
       closing = false;
     }
@@ -118,33 +119,44 @@ void test() {
       continue;
     }
     i++;
-    Serial.println(i);
+    PRINTLN(i);
     delay(10);
     Open();
   }
 }
 
 void GoUp() {
+  if (verticalPos >= STEPS_TO_GO_UP) {
+    return;
+  }
   UP_DIRECTION;
   goingUp = true;
   goingDown = false;
 }
 
 void GoDown() {
+  if (verticalPos <= 0) {
+    return;
+  }
   DOWN_DIRECTION;
   goingDown = true;
   goingUp = false;
 }
 
 void Open() {
+  if (horizontalPos >= STEPS_TO_OPEN) {
+    return;
+  }
   OPEN_DIRECTION;
   opening = true;
   closing = false;
 }
 
 void Close() {
+  if (horizontalPos <= 0) {
+    return;
+  }
   CLOSE_DIRECTION;
-  Serial.println("closinnnng !!!");
   closing = true;
   opening = false;
 }
@@ -177,29 +189,25 @@ void DoAction() {
   switch (action) {
     case GO_UP_ACTION:
       GoUp();
+      break;
     case GO_DOWN_ACTION:
       GoDown();
+      break;
     case OPEN_ACTION:
       Open();
+      break;
     case CLOSE_ACTION:
       Close();
+      break;
     case STOP_ACTION:
       opening = false;
       closing = false;
       goingUp = false;
       goingDown = false;
+      break;
   }
 }
 
 void IsBusy() {
-  // Serial.print(closing);
-  // Serial.print(" ");
-  // Serial.print(horizontalPos);
-  // Serial.print(" ");
-  // Serial.print(opening);
-  // Serial.print(" ");
-  // Serial.print(goingUp);
-  // Serial.print(" ");
-  // Serial.println(goingDown);
   Wire.write(closing || opening || goingUp || goingDown);
 }

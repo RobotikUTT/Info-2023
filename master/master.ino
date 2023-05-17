@@ -29,20 +29,26 @@
 #define STRATEGY_CLAWS_CLOSE            4
 #define STRATEGY_CLAWS_GO_DOWN_AND_OPEN 5
 
+#define RADIUS_ROBOT 0.15
+
 int distances[12];
 
 String inputString = "";
 
 
 const float strategy0[] = {
+  // Strat départ assiette à côté du plat adverse
   // Values at the beginning (x, y, orientation)
-  0, 0, 0,
+  // mettre rayon robot en x
+  RADIUS_ROBOT, 1.875, PI/2,
   // Number of targets
   4,
-  0.1, 0.1, STRATEGY_CLAWS_CLOSE,
-  0.1, 0.1, STRATEGY_CLAWS_OPEN,
-  0.1, 0.1, STRATEGY_CLAWS_CLOSE,
-  0, 0, STRATEGY_CLAWS_DO_NOTHING,
+  // Coords x, y, claws
+  0.225, 2.1, STRATEGY_CLAWS_GO_DOWN_AND_OPEN,
+  0.225, 2.225, STRATEGY_CLAWS_DO_NOTHING,
+  0.225, 2.225, STRATEGY_CLAWS_CLOSE,
+  0.225, 2.225, STRATEGY_CLAWS_GO_UP,
+  0.225, 2.4
 };
 const float strategy1[] = {
 

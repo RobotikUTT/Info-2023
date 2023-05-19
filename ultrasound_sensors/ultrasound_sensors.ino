@@ -38,7 +38,7 @@ void loop() {
     delayMicroseconds(10);
     digitalWrite(TRIGGER, LOW);
     uint32_t echo_round_trip = pulseIn(sonarPins[i], HIGH, 5000UL);
-    distances[i] = echo_round_trip * SOUND_SPEED / 1000 / 2 ;
+    distances[i] = echo_round_trip * SOUND_SPEED / 1000 / 2;
     // echo in microsec, sound_speed in m/s, distanbce is mm
     delay(10);
     #if DEV_ENV

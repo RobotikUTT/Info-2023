@@ -16,10 +16,6 @@
 #define zStepPin          7  //PD7 -> set PORTD |= 0b10000000 ou 0x80   eteindre PORTH &= 0b01111111 ou 0x7F
 #define enablePin         8
 
-// Communication
-#define RXSWSerial       15
-#define TXSWSerial       14
-
 // Mesure tension
 #define tensionBatteriePin    A7       //Analogique 7
 #define facteurTension        0.01659  //Pont diviseur de tension + lecture sur 10 bits.
@@ -50,11 +46,11 @@
 //-------------------------------------------------------------------
 
 // conversion pas par tour et par radians.
-#define pasParMetre    4244 * 1.03 * 1.05 * 0.5 * 1.06 //facteur experimental = 1.03 ; demi-pas alors que la valeur a été trouvée pour des quarts de pas
+#define pasParMetre    4680 //facteur experimental = 1.03 ; demi-pas alors que la valeur a été trouvée pour des quarts de pas
 const float rRobot = 0.119; //0.1265 théoriquement
 
 //Determinées
-const PROGMEM long dtMaxSpeed = 1200;//1200; // Microsecondes entre 2 pas à la vitesse maximale
+const PROGMEM long dtMaxSpeed = 1000; // Microsecondes entre 2 pas à la vitesse maximale
 const PROGMEM long acc = 2.5 * pow(10, 8); // µs² / pas (inverse de l'acceleration)
 const PROGMEM long dec = 2.5 * pow(10, 8); // µs² / pas (inverse de la deceleration)
 //const PROGMEM long tempsAcc = 1.0 * pow(10, 6); // Temps d'accélération en µs
@@ -115,10 +111,6 @@ unsigned long nbTotalEtapes;            // Nombres total d'étapes à réaliser
 /////////////////////     Autres Variables     //////////////////////
 //-------------------------------------------------------------------
 
-//Comunication
-SoftwareSerial SWSerial(RXSWSerial, TXSWSerial);
-String inputString = "";
-
 //Batterie
 bool batterieAlerte = false;
 bool batterieCritique = false;
@@ -132,9 +124,6 @@ int moveType = NOT_MOVING;
 //-------------------------------------------------------------------
 
 void setup() {
-  pinMode(RXSWSerial, INPUT);
-  pinMode(TXSWSerial, OUTPUT);
-
   pinMode(xStepPin, OUTPUT);  // Pin pas moteur x en mode OUTPUT
   pinMode(yStepPin, OUTPUT);  // Pin pas moteur y en mode OUTPUT
   pinMode(zStepPin, OUTPUT);  // Pin pas moteur z en mode OUTPUT

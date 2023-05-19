@@ -50,26 +50,28 @@ long startTime_;
 // Homologation
 const float strategy0[] = {
   2.3, 2.56, -PI/2,
-  7,
-  2.3, 1.26,
-  2.3, 1.70,
-  -PI/2, -1,
-  2.3, -2,
-  1.7, -3,
-  0.725, 1.70,
+  9,
+  1.3, 0,//2.3, 1.26,
+  -0.44, 0,//2.3, 1.70,
   PI/2, -1,
-  0.725, -2,
-  1.70, -3,
-  0.725, 1.24,
-  0.725, 0.07,
-  0.725, 0.27,
-  PI, -1,
+  //2.3, -2,
+  //1.7, -3,
+  0.495, 0,
+  -PI/2, -1,
+  //0.725, -2,
+  //1.70, -3,
+  0.46, 0,//0.725, 1.24,
+  1.17, 0, //0.725, 0.07,
+  -3, 0,
+  0, -0.5
+  //-3, 0,//0.725, 0.27,
+  /*PI, -1,
   0.725, -2,
   0.27, -3,
   0.135, 0.33,
   0.135, -2,
   0.33, -1,
-  0.23, 0.4,
+  0.23, 0.4,*/
   //0.23, 0.45,
 };
 
@@ -80,11 +82,17 @@ const float strategy0[] = {
 };*/
 
 const float strategy1[] = {
-  -2.3, 2.56, 0,
-  3,
-  -2.3, 1.26,
-  -2.3, 1.70,
-  -2.3, 2.56,
+  2.3, 2.56, -PI/2,
+  9,
+  1.3, 0,
+  -0.44, 0,
+  -PI/2, -1,
+  0.495, 0,
+  PI/2, -1,
+  0.46, 0,
+  1.17, 0,
+  -2, 0,
+  0, 0.5
 };
 
 int strategyId = 0;
@@ -100,8 +108,8 @@ float currentMovingDirection = 0;
 
 float xRequest, yRequest, angleRequest;
 
-float position[2];
-float angle;
+//float position[2];
+//float angle;
 
 void setup() {
   #if DEV_ENV
@@ -129,21 +137,17 @@ void setup() {
 }
 
 void loop() {
-  if (millis() - startTime_ > 95000) {
-    StopMoving();
-    strategyFinished = true;
-  }
   if (!gameStarted) {
     CheckStrategyButton();
     CheckStartGameButton();
     delay(100);
-    // Serial.println("waiting");
-    // Serial.println("au début de la boucle");
-    // Serial.println(position[0]);
   } else if (!strategyFinished) {
-    //Serial.println("running");
+    if (millis() - startTime_ > 95000) {
+      StopMoving();
+      strategyFinished = true;
+    }
     RunStrategy();
-    if (millis() - startTime_ > 3000 && millis() - startTime_ < 94000) {
+    if (millis() - startTime_ > 5000 && millis() - startTime_ < 94000) {
       CheckRobotsAround();
     }
   }
@@ -167,6 +171,7 @@ void CheckStrategyButton() {
 }
 
 void CheckStartGameButton() {
+  Serial.println(digitalRead(START_PIN));
   if (digitalRead(START_PIN)) {
     gameStarted = true;
     startTime_ = millis();
@@ -177,15 +182,16 @@ void CheckStartGameButton() {
         break;
       case 1:
         strategy = strategy1;
+        break;
       default:
         // The strategy does not exist ! To avoid any strange thing with memory, it is better to just do nothing. And hope this case never happens >.<
         strategyFinished = true;
-        Serial.println("unknown");
+        // Serial.println("unknown");
         return;
     }
-    position[0] = strategy[0];
-    position[1] = strategy[1];
-    angle = strategy[2];
+    //position[0] = strategy[0];
+    //position[1] = strategy[1];
+    //angle = strategy[2];
     delay(1000);
   }
 }
@@ -202,23 +208,25 @@ void CheckRobotsAround() {
     if (targetPosition[1] < 0) {
       return;
     }
-    float relativeTargetPosition[2] = {targetPosition[0] - position[0], targetPosition[1] - position[1]};
-    relativeTargetPosition[0] -= position[0];
-    relativeTargetPosition[1] -= position[1];
-    bool forward = (targetPosition[0] - position[0]) * cos(angle) > 0.01 || (targetPosition[1] - position[1]) * sin(angle) > 0.01;
+    //float relativeTargetPosition[2] = {targetPosition[0] - position[0], targetPosition[1] - position[1]};
+    //relativeTargetPosition[0] -= position[0];
+    //relativeTargetPosition[1] -= position[1];
+    //bool forward = (targetPosition[0] - position[0]) * cos(angle) > 0.01 || (targetPosition[1] - position[1]) * sin(angle) > 0.01;
+    //Serial.println("in the loop");
     for (int j = 0; j < 12; j++) {
       int i = sonarIds[j];
       if (distances[j] > 300 || distances[j] < 10) {
         continue;
       }
+      //Serial.print(distances[j]);
+      //Serial.print(" ");
       if (i != 11 && i != 0 && i != 1 && (i < 4 || i > 8)) {
         continue;
       }
-      //StopMoving();
-      Serial.print("stop !");
+      StopMoving();
       canContinueMoving = false;
       hasStopped = true;
-      float movingAngle = angle;
+      //float movingAngle = angle;
       /*if (relativeTargetPosition[0] == 0) {
         // y should never equal 0 at the same time as x. If it does, well, it should not (and it should not break things either anyway)
         if (relativeTargetPosition[1] > 0) {
@@ -263,17 +271,20 @@ void CheckRobotsAround() {
         Rotation(absoluteObstacleX, absoluteObstacleY, turnAngle);
       }*/
     }
+    //Serial.println();
+    //Serial.println(canContinueMoving);
   }
+  //Serial.println("donc c'est bon, on est sortis");
   // If we stopped, we need to start moving again
   if (hasStopped) {
     float* target = GetTarget();
     // If this is a rotation
+    float xMoved, yMoved, angleMoved;
+    FetchDistanceMoved(xMoved, yMoved, angleMoved);
     if (target[1] < 0) {
-      float xMoved, yMoved, angleMoved;
-      FetchDistanceMoved(xMoved, yMoved, angleMoved);
-      Rotation(position[0] + xMoved, position[1] + yMoved, target[0]);
-    } else if (target[0] != position[0] || target[1] != position[1]) {
-      Move(target[0], target[1]);
+      Rotation(0, 0, target[0] - angleMoved);
+    } else if (xRequest - xMoved != 0 || yRequest - yMoved != 0) {
+      Move(xRequest - xMoved, yRequest - yMoved);
     }
   }
 }
@@ -286,16 +297,19 @@ void RunStrategy() {
   FetchDistanceMoved(xMoved, yMoved, angleMoved);
   //Serial.print("on en est ici : ");
   //Serial.println(strategyStep);
+  // Serial.print(xMoved);
+  // Serial.print(" ");
+  // Serial.println(target[0]);
   if (strategyStep == -1
      || target[1] <= -2
-     || (target[1] != -1 && abs(position[0] + xMoved - target[0]) < 0.005 && abs(position[1] + yMoved - target[1]) < 0.005)
+     || (target[1] != -1 && abs(xMoved - xRequest) < 0.005 && abs(yMoved - yRequest) < 0.005)
      || target[1] == -1 /*&& (fmod(fmod(angleMoved, 2*PI) - fmod(angleRequest, 2*PI), 2*PI) < 0.05 || fmod(fmod(angleMoved, 2*PI) - fmod(angleRequest, 2*PI), 2*PI) > 2*PI-0.05)*/) {
     strategyStep++;
     StopMoving();
-    Serial.print("starting step ");
-    Serial.print(strategyStep);
-    Serial.print("/");
-    Serial.println(strategy[3]);
+    // Serial.print("starting step ");
+    // Serial.print(strategyStep);
+    // Serial.print("/");
+    // Serial.println(strategy[3]);
     //Serial.println("on rentre ici !");
     // Serial.println(strategyStep);
     // If we reached the end of the strategy, we leave
@@ -304,7 +318,7 @@ void RunStrategy() {
       PRINTLN("STRATEGY finished !!");
       return;
     }
-    Serial.println("ici !");
+    // Serial.println("ici !");
     target = GetTarget();
     // Serial.println(target[0]);
     // Serial.println(target[1]);
@@ -313,24 +327,29 @@ void RunStrategy() {
     // If this is a rotation
     //Serial.println("en runnant la strat");
     //Serial.println(target[1]);
+    // Serial.println(target[1]);
     if (target[1] == -1) {
-      float xMoved, yMoved, angleMoved;
-      FetchDistanceMoved(xMoved, yMoved, angleMoved);
-      Rotation(position[0]+xMoved, position[1]+yMoved, target[0]);
+      // float xMoved, yMoved, angleMoved;
+      // FetchDistanceMoved(xMoved, yMoved, angleMoved);
+      Rotation(0, 0, target[0]);
       delay(3000);
     } else if (target[1] == -2) {
-      position[0] = target[0];
+      //position[0] = target[0];
       StopMoving();
     } else if (target[1] == -3) {
-      position[1] = target[0];
+      //position[1] = target[0];
       StopMoving();
-    } else if (target[0] != position[0] || target[1] != position[1]) {
+    } else {
+      // Serial.print("moving to ");
+      // Serial.print(target[0]);
+      // Serial.print(" ");
+      // Serial.println(target[1]);
       Move(target[0], target[1]);
     }
-  } else if (abs(xMoved - xRequest) < 0.001 && abs(yMoved - yRequest) < 0.001 && abs(angleMoved - angleRequest) < 0.001) {
+  }/* else if (abs(xMoved - xRequest) < 0.001 && abs(yMoved - yRequest) < 0.001 && abs(angleMoved - angleRequest) < 0.001) {
     // If we enter in this condition, movement should always be a straight path, and never a rotation
     Move(target[0], target[1]);
-  }
+  }*/
 }
 
 // Returns the position of the current target in the strategy
@@ -366,68 +385,50 @@ void TestEachDirection() {
 void Move(float x, float y) {
   float xMoved, yMoved, angleMoved;
   FetchDistanceMoved(xMoved, yMoved, angleMoved);
-  PRINT("distance Moved x : ");
-  PRINTLN(xMoved);
-  position[0] += xMoved;
-  position[1] += yMoved;
-  angle += angleMoved;
-  xRequest = x - position[0];
-  yRequest = y - position[1];
-  if (xRequest == 0 && yRequest == 0) {
+  //PRINT("distance Moved x : ");
+  //PRINTLN(xMoved);
+  //position[0] += xMoved;
+  //position[1] += yMoved;
+  //angle += angleMoved;
+  //xRequest = x - position[0];
+  //yRequest = y - position[1];
+  /*if (xRequest == 0 && yRequest == 0) {
     return;
-  }
+  }*/
   // Changing the base
-  Serial.print("changement de base : ");
-  Serial.print(xRequest);
-  Serial.print(" ");
-  Serial.print(yRequest);
-  Serial.print(" ");
-  Serial.print(cos(angle+PI/2));
-  Serial.print(" ");
-  Serial.println(sin(angle+PI/2));
-  Serial.print(" et donc -sin * x = ");
-  Serial.print(-sin(angle+PI/2) * xRequest);
-  Serial.print(" et cos * y = ");
-  Serial.println(cos(angle+PI/2) * yRequest);
-  float newXRequest = -cos(angle+PI/2) * xRequest - sin(angle+PI/2) * yRequest;
+  xRequest = x;
   // We need to inverse the direction of the y axis so that the coordinate system is turning in the trigonometric sens
-  yRequest = -sin(angle+PI/2) * xRequest + cos(angle+PI/2) * yRequest;
-  xRequest = newXRequest;
-  Serial.print("après le changement de base : ");
-  Serial.print(xRequest);
-  Serial.print(" ");
-  Serial.print(yRequest);
-  Serial.print(" ");
-  Serial.print(angle);
-  Serial.println(" ");
+  yRequest = y;
+  float xReq = -cos(PI/2) * x - sin(PI/2) * y;
+  float yReq = -sin(PI/2) * x + cos(PI/2) * y;
   Wire.beginTransmission(I2C_MOVING_ID);
   Wire.write(1);
-  writeFloatToWire(xRequest);
-  writeFloatToWire(yRequest);
+  writeFloatToWire(xReq);
+  writeFloatToWire(yReq);
   Wire.write(100);
   Wire.endTransmission();
   angleRequest = 0;
   PRINT("Consigne 1 envoyée : Move ");
-  PRINT(xRequest);
+  PRINT(x);
   PRINT(" ");
-  PRINTLN(yRequest);
+  PRINTLN(y);
 }
 
 void Rotation(float xCentre, float yCentre, float angle_) {
   float xMoved, yMoved, angleMoved;
   FetchDistanceMoved(xMoved, yMoved, angleMoved);
-  position[0] += xMoved;
-  position[1] += yMoved;
-  angle += angleMoved;
+  //position[0] += xMoved;
+  //position[1] += yMoved;
+  //angle += angleMoved;
   Wire.beginTransmission(I2C_MOVING_ID);
   Wire.write(2);
-  writeFloatToWire(xCentre - position[0]);
-  writeFloatToWire(yCentre - position[1]);
+  writeFloatToWire(xCentre);
+  writeFloatToWire(yCentre);
   writeFloatToWire(angle_);
   Wire.write(100);
   Wire.endTransmission();
-  xRequest = /*xCentre - */position[0];
-  yRequest = /*yCentre - */position[1];
+  // xRequest = /*xCentre - */position[0];
+  // yRequest = /*yCentre - */position[1];
   angleRequest = angle_;
   PRINTLN("Consigne 2 envoyée : Rotation");
 }
@@ -437,9 +438,9 @@ void StopMoving() {
   FetchDistanceMoved(xMoved, yMoved, angleMoved);
   PRINT("distance Moved x : ");
   PRINTLN(xMoved);
-  position[0] += xMoved;
-  position[1] += yMoved;
-  angle += angleMoved;
+  // position[0] += xMoved;
+  // position[1] += yMoved;
+  //angle += angleMoved;
   // Serial.println("in the func");
   Wire.beginTransmission(I2C_MOVING_ID);
   // Serial.println("après");
@@ -453,16 +454,28 @@ void StopMoving() {
 
 void FetchDistanceMoved(float &x, float &y) {
   Wire.requestFrom(I2C_MOVING_ID, 12);
-  x = readFloatFromWire();
-  y = readFloatFromWire();
+  float x_ = readFloatFromWire();
+  float y_ = readFloatFromWire();
+  // Serial.print("La distance déplacée : ");
+  // Serial.print(x_);
+  // Serial.print(" ");
+  // Serial.println(y_);
+  x = -cos(PI/2) * x_ + sin(PI/2) * y_;
+  y = sin(PI/2) * x_ + cos(PI/2) * y_;
   // we don't care about the angle in this implementation
   readFloatFromWire();
 }
 
 void FetchDistanceMoved(float &x, float &y, float &angle) {
   Wire.requestFrom(I2C_MOVING_ID, 12);
-  x = readFloatFromWire();
-  y = readFloatFromWire();
+  float x_ = readFloatFromWire();
+  float y_ = readFloatFromWire();
+  // Serial.print("La distance déplacée : ");
+  // Serial.print(x_);
+  // Serial.print(" ");
+  // Serial.println(y_);
+  x = -cos(PI/2) * x_ - sin(PI/2) * y_;
+  y = sin(PI/2) * x_ + cos(PI/2) * y_;
   angle = readFloatFromWire();
 }
 

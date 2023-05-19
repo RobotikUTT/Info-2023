@@ -50,7 +50,7 @@
 const float rRobot = 0.119; //0.1265 théoriquement
 
 //Determinées
-const PROGMEM long dtMaxSpeed = 1000; // Microsecondes entre 2 pas à la vitesse maximale
+const PROGMEM long dtMaxSpeed = 1500; // Microsecondes entre 2 pas à la vitesse maximale
 const PROGMEM long acc = 2.5 * pow(10, 8); // µs² / pas (inverse de l'acceleration)
 const PROGMEM long dec = 2.5 * pow(10, 8); // µs² / pas (inverse de la deceleration)
 //const PROGMEM long tempsAcc = 1.0 * pow(10, 6); // Temps d'accélération en µs

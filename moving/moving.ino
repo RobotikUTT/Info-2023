@@ -145,81 +145,6 @@ void setup() {
   #if DEV_ENV
     Serial.println("Initialized !");
   #endif
-
-  /*xCentre = -0;
-  yCentre = -1;
-  int speedPercentage = 100;
-  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
-  #if DEV_ENV
-    Serial.print(" : Translation de coordonnees (");
-    Serial.print(xCentre);
-    Serial.print(", ");
-    Serial.print(yCentre);
-    Serial.print(") avec une vitesse de ");
-    Serial.print(speedPercentage);
-    Serial.println("%");
-  #endif
-  dtSpeed = min(dtSpeed, dtMaxSpeed);
-  moveType = TRANSLATION;
-  CalculPasTranslation(-xCentre, -yCentre);
-  angleConsigne = 0;
-  Demarrer();*/
-
-  /*xCentre = 1;
-  yCentre = 0;
-  angleConsigne = 2*PI*1.1;
-  int speedPercentage = 100;
-  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
-  dtSpeed = min(dtSpeed, dtMaxSpeed);
-  #if DEV
-    Serial.print("Consigne de départ : ");
-    Serial.print(xCentre);
-    Serial.print(" ");
-    Serial.print(yCentre);
-    Serial.print(" ");
-    Serial.println(angleConsigne);
-  #endif
-  moveType = ROTATION;
-  CalculPasRotation(xCentre, yCentre, angleConsigne);
-  Demarrer();*/
-
-  /*xCentre = 0.5;
-  yCentre = 0;
-  angleConsigne = PI*1.1;
-  int speedPercentage = 100;
-  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
-  dtSpeed = min(dtSpeed, dtMaxSpeed);
-  #if DEV
-    Serial.print("Consigne de départ : ");
-    Serial.print(xCentre);
-    Serial.print(" ");
-    Serial.print(yCentre);
-    Serial.print(" ");
-    Serial.println(angleConsigne);
-  #endif
-  moveType = ROTATION;
-  CalculPasRotation(xCentre, yCentre, angleConsigne);
-  Demarrer();
-  while (enMvmt) {
-    Avancer();
-  }
-  xCentre = 0.5;
-  yCentre = 0;
-  angleConsigne = PI*1.1;
-  int speedPercentage = 100;
-  dtSpeed = dtMaxSpeed * speedPercentage / 100.;
-  dtSpeed = min(dtSpeed, dtMaxSpeed);
-  #if DEV
-    Serial.print("Consigne de départ : ");
-    Serial.print(xCentre);
-    Serial.print(" ");
-    Serial.print(yCentre);
-    Serial.print(" ");
-    Serial.println(angleConsigne);
-  #endif
-  moveType = ROTATION;
-  CalculPasRotation(xCentre, yCentre, angleConsigne);
-  Demarrer();*/
 }
 
 //-------------------------------------------------------------------
@@ -497,11 +422,11 @@ void onReceive() {
       dtSpeed = dtMaxSpeed * speedPercentage / 100.;
       dtSpeed = min(dtSpeed, dtMaxSpeed);
       #if DEV
-        Serial.print("Consigne de départ : ");
+        Serial.print("Rotation : centre = (");
         Serial.print(xCentre);
-        Serial.print(" ");
+        Serial.print(", ");
         Serial.print(yCentre);
-        Serial.print(" ");
+        Serial.print(") ; angle = ");
         Serial.println(angleConsigne);
       #endif
       moveType = ROTATION;
